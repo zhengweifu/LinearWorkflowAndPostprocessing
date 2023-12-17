@@ -64,19 +64,18 @@ def PrintgLuminanceHistograms():
 # Step 2
 # -------------- Automatic Exposure Luminance Average Begin --------------
 gLastFrameLuminance = ti.field(ti.f32, ())
-gAdaptedLuminance = ti.field(ti.f32, ())
 gTimeCoff = ti.field(ti.f32, ())
 @ti.kernel
 def LuminanceAverageKernel(srcImg: Img2d):
     pixelCount = srcImg.shape[0] * srcImg.shape[1]
-    gAdaptedLuminance[None] = 0
+    adaptedLuminance = 0.0
     for i in range(NUM_HISTOGRAM_BINS):
         perLuminances = gLuminanceHistograms[i] * i
-        ti.atomic_add(gAdaptedLuminance[None], perLuminances)
-    weightedLogAverage = gAdaptedLuminance[None] / (ti.math.max(pixelCount - gLuminanceHistograms[0], 1.0)) - 1.0
+        ti.atomic_add(adaptedLuminance, perLuminances)
+    weightedLogAverage = adaptedLuminance / (ti.math.max(pixelCount - gLuminanceHistograms[0], 1.0)) - 1.0
     weightedAvgerageLuminance = ti.math.pow(2.0, weightedLogAverage / 254.0 * gLogLuminanceRange[None] + gMinLogLuminance[None])
-    gAdaptedLuminance[None] = gLastFrameLuminance[None] + (weightedAvgerageLuminance - gLastFrameLuminance[None]) * gTimeCoff[None]
-    gLastFrameLuminance[None] = gAdaptedLuminance[None]
+    adaptedLuminance = gLastFrameLuminance[None] + (weightedAvgerageLuminance - gLastFrameLuminance[None]) * gTimeCoff[None]
+    gLastFrameLuminance[None] = adaptedLuminance
     #print(weightedLogAverage, weightedAvgerageLuminance, gLastFrameLuminance[None])
 # -------------- Automatic Exposure Luminance Average End --------------
 
@@ -139,7 +138,7 @@ def ToneMappingKernel(srcImg: Img2d):
 # -------------- Tone Mapping and Gamma Correction End  --------------
 UI_TOP = 10.0
 UI_RIGHT = 10.0
-UI_WIDTH = 300.0
+UI_WIDTH = 360.0
 UI_HEIGHT = 200.0
 def Main():
     imgDir = os.path.join(os.getcwd(), "images")
@@ -154,10 +153,11 @@ def Main():
     gui = window.get_gui()
 
     # ui default
-    uiMinLogLuminance = 0.3
+    uiMinLogLuminance = -0.5
     uiMaxLogLuminance = 5.0
     uiSpeed = 1.0
     uiUseToneMapping = True
+    uiSceneLuminance = 1.0
 
     lastTime = datetime.datetime.now()
     while window.running:
@@ -175,6 +175,7 @@ def Main():
         uiMaxLogLuminance = gui.slider_float('Max EV100', uiMaxLogLuminance, minimum=-10, maximum=20)
         uiSpeed = gui.slider_float('Speed', uiSpeed, minimum=0.2, maximum=20)
         uiUseToneMapping = gui.checkbox('Use Tone Mapping', uiUseToneMapping)
+        uiSceneLuminance = gui.slider_float('Scene Luminance', uiSceneLuminance, minimum=0.1, maximum=10.0)
         gui.end()
 
         # time delta
@@ -189,7 +190,7 @@ def Main():
         gOneOverLogLuminanceRange[None] = 1.0 / gLogLuminanceRange[None]
         gTimeCoff[None] = 1.0 - ti.exp(-timeDelta * uiSpeed)
         gUseToneMapping[None] = 1 if uiUseToneMapping else 0
-        JustImageLuminanceKernel(img, 1.0)
+        JustImageLuminanceKernel(img, uiSceneLuminance)
         
         # step 1
         ClearHistogramKernel()
