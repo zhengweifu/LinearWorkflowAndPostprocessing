@@ -122,64 +122,89 @@ def AdvanceACESToneMapping(color, adaptedLum):
 
     return color
 
+gUseToneMapping = ti.field(ti.i32, ())
+
 @ti.kernel
 def ToneMappingKernel(srcImg: Img2d):
     h, w = srcImg.shape[0], srcImg.shape[1]
     for i, j in ti.ndrange(h, w):
         c = Vector3(srcImg[i, j])
         adaptedLum = 1.0 / (0.96 * gLastFrameLuminance[None] + 0.0001)
-        #print(gLastFrameLuminance[None])
-        srcImg[i, j] = GammaCorrection(AdvanceACESToneMapping(c, adaptedLum))
+        if gUseToneMapping[None] > 0:
+            srcImg[i, j] = AdvanceACESToneMapping(c, adaptedLum)
+        else:
+            srcImg[i, j] *= adaptedLum
+        srcImg[i, j] = GammaCorrection(srcImg[i, j])
 
 # -------------- Tone Mapping and Gamma Correction End  --------------
-
+UI_TOP = 10.0
+UI_RIGHT = 10.0
+UI_WIDTH = 300.0
+UI_HEIGHT = 200.0
 def Main():
     imgDir = os.path.join(os.getcwd(), "images")
     srcImgPath = os.path.join(imgDir, "veranda_1k.hdr")
     srcImg = cv2.imread(srcImgPath, cv2.IMREAD_UNCHANGED)
     srcImg = srcImg.swapaxes(0, 1)[:, ::-1, ::-1].copy()
 
-    guiRes = (srcImg.shape[0]+200, srcImg.shape[1])
+    guiRes = (srcImg.shape[0], srcImg.shape[1])
     titleName = "Automic Exposure"
-    gui = ti.GUI(titleName, guiRes)
-    uiMinLogLuminance = gui.slider('Min EV100', -10, 20)
-    uiMaxLogLuminance = gui.slider('Max EV100', -10, 20)
-    uiSpeed = gui.slider('Speed', 0.2, 20)
-    # uiUseToneMapping = gui.checkbox('Use Tone Mapping', True)
+    window = ti.ui.Window(titleName, guiRes, fps_limit=200, pos = (150, 150))
+    uiCanvas = window.get_canvas()
+    gui = window.get_gui()
 
-    uiMinLogLuminance.value = 0.3
-    uiMaxLogLuminance.value = 5.0
-    uiSpeed.value = 1.0
+    # ui default
+    uiMinLogLuminance = 0.3
+    uiMaxLogLuminance = 5.0
+    uiSpeed = 1.0
+    uiUseToneMapping = True
+
     lastTime = datetime.datetime.now()
-    while gui.running and not gui.get_event(gui.ESCAPE):
+    while window.running:
+        # copy image
+        img = srcImg.copy()
+
+        # ui
+        uiShape = window.get_window_shape()
+        uiTop = UI_TOP / uiShape[1]
+        uiLeft = (uiShape[0] - UI_RIGHT - UI_WIDTH) / uiShape[0]
+        uiWidth =  UI_WIDTH / uiShape[0]
+        uiHeigh = UI_HEIGHT / uiShape[1]
+        gui.begin("Exposure", uiLeft, uiTop, uiWidth, uiHeigh)
+        uiMinLogLuminance = gui.slider_float('Min EV100', uiMinLogLuminance, minimum=-10, maximum=20)
+        uiMaxLogLuminance = gui.slider_float('Max EV100', uiMaxLogLuminance, minimum=-10, maximum=20)
+        uiSpeed = gui.slider_float('Speed', uiSpeed, minimum=0.2, maximum=20)
+        uiUseToneMapping = gui.checkbox('Use Tone Mapping', uiUseToneMapping)
+        gui.end()
+
+        # time delta
         nowTime = datetime.datetime.now()
         timeDelta = (nowTime - lastTime).total_seconds()
         lastTime = nowTime
 
-        img = srcImg.copy()
-
-        # Step 0
-        gMinLogLuminance[None] = uiMinLogLuminance.value
-        gMaxLogLuminance[None] = uiMaxLogLuminance.value
+        # step 0
+        gMinLogLuminance[None] = uiMinLogLuminance
+        gMaxLogLuminance[None] = uiMaxLogLuminance
         gLogLuminanceRange[None] = ti.max(gMaxLogLuminance[None] - gMinLogLuminance[None], 0.01)
         gOneOverLogLuminanceRange[None] = 1.0 / gLogLuminanceRange[None]
-        gTimeCoff[None] = 1.0 - ti.exp(-timeDelta * uiSpeed.value)
+        gTimeCoff[None] = 1.0 - ti.exp(-timeDelta * uiSpeed)
+        gUseToneMapping[None] = 1 if uiUseToneMapping else 0
         JustImageLuminanceKernel(img, 1.0)
         
-        # Step 1
+        # step 1
         ClearHistogramKernel()
         HistogramKernel(img)
         
-        # Step 2
+        # step 2
         LuminanceAverageKernel(img)
         
-        # Step 3
+        # step 3
         ToneMappingKernel(img)
 
         img_padded = np.zeros(dtype=np.float32, shape=(guiRes[0], guiRes[1], 3))
         img_padded[:img.shape[0], :img.shape[1]] = img
-        gui.set_image(img_padded)
-        gui.show()
+        uiCanvas.set_image(img_padded)
+        window.show()
     
 
 if __name__ == "__main__":
