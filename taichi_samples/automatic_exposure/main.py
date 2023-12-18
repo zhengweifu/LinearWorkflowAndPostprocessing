@@ -124,11 +124,12 @@ def AdvanceACESToneMapping(color, adaptedLum):
 gUseToneMapping = ti.field(ti.i32, ())
 
 @ti.kernel
-def ToneMappingKernel(srcImg: Img2d):
+def ToneMappingKernel(srcImg: Img2d, bUseExposure: ti.u8):
     h, w = srcImg.shape[0], srcImg.shape[1]
     for i, j in ti.ndrange(h, w):
         c = Vector3(srcImg[i, j])
-        adaptedLum = 1.0 / (0.96 * gLastFrameLuminance[None] + 0.0001)
+        adaptedLum = 1.0 / (9.6 * gLastFrameLuminance[None] + 0.0001)
+        adaptedLum = adaptedLum if bUseExposure else 1.0
         if gUseToneMapping[None] > 0:
             srcImg[i, j] = AdvanceACESToneMapping(c, adaptedLum)
         else:
@@ -153,10 +154,11 @@ def Main():
     gui = window.get_gui()
 
     # ui default
-    uiMinLogLuminance = -0.5
-    uiMaxLogLuminance = 5.0
+    uiMinLogLuminance = -10
+    uiMaxLogLuminance = 20.0
     uiSpeed = 1.0
     uiUseToneMapping = True
+    uiUseExposure = True
     uiSceneLuminance = 1.0
 
     lastTime = datetime.datetime.now()
@@ -174,6 +176,7 @@ def Main():
         uiMinLogLuminance = gui.slider_float('Min EV100', uiMinLogLuminance, minimum=-10, maximum=20)
         uiMaxLogLuminance = gui.slider_float('Max EV100', uiMaxLogLuminance, minimum=-10, maximum=20)
         uiSpeed = gui.slider_float('Speed', uiSpeed, minimum=0.2, maximum=20)
+        uiUseExposure = gui.checkbox('Use Exposure', uiUseExposure)
         uiUseToneMapping = gui.checkbox('Use Tone Mapping', uiUseToneMapping)
         uiSceneLuminance = gui.slider_float('Scene Luminance', uiSceneLuminance, minimum=0.1, maximum=10.0)
         gui.end()
@@ -200,7 +203,7 @@ def Main():
         LuminanceAverageKernel(img)
         
         # step 3
-        ToneMappingKernel(img)
+        ToneMappingKernel(img, uiUseExposure)
 
         img_padded = np.zeros(dtype=np.float32, shape=(guiRes[0], guiRes[1], 3))
         img_padded[:img.shape[0], :img.shape[1]] = img
