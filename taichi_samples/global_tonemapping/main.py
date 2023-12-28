@@ -57,7 +57,7 @@ def Main():
         elif tonemapingType == 3:
             tonemapingTypeName = "Filmic tonemapping"
         elif tonemapingType == 4:
-            groutonemapingTypeNamepName = "ACES tonemapping"
+            tonemapingTypeName = "ACES tonemapping"
         elif tonemapingType == 5:
             tonemapingTypeName = "ACES tonemapping advance"
         window.GUI.text(tonemapingTypeName)
