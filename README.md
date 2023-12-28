@@ -9,6 +9,9 @@
 ## References
 ### Taichi
 + https://docs.taichi-lang.cn/api/taichi/ui/
+### Linear Workflow
++ https://zhuanlan.zhihu.com/p/66558476
++ https://docs.unity3d.com/Manual/LinearRendering-LinearOrGammaWorkflow.html
 ### Tonemapping
 + https://bartwronski.com/2016/08/29/localized-tonemapping/
 + https://advances.realtimerendering.com/s2021/jpatry_advances2021/index.html
